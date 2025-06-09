@@ -7,9 +7,6 @@
 #include <SPI.h>
 #include <SD.h>
 
-// 声明全局的LGFX对象，而不是MyTFT
-extern LGFX lcd;
-
 bool initCardAndTest();
 void AppController_Init(void);
 bool AppController_IsMainSDReady();

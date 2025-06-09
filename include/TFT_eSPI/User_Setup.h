@@ -60,7 +60,6 @@
 #define ST7796_DRIVER
 //#define SSD1351_DRIVER
 //#define SSD1963_480_DRIVER
-
  #define TFT_BL   53            // LED back-light control pin
  #define TFT_BACKLIGHT_ON HIGH  // Level to turn ON back-light (HIGH or LOW)
 
@@ -73,6 +72,7 @@
 #define TFT_CS   28  // Chip select control pin
 #define TFT_DC   22  // Data Command control pin
 #define TFT_RST  52  // Reset pin (could connect to RST pin)
+
 //#define TFT_RST  -1  // Set TFT_RST to -1 if display RESET is connected to ESP32 board RST
 
 // For ESP32 Dev board (only tested with GC9A01 display)

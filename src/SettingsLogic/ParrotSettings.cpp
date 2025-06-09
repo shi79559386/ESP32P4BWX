@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+// 全局静态变量，用于存储鹦语功能的设置和状态
 static audio_playlist_t s_playlist;
 static int s_current_file_selection_index = -1;
 static uint8_t s_current_volume = PARROT_DEFAULT_VOLUME;
@@ -14,6 +15,8 @@ static parrot_status_update_cb_t s_status_update_callback = NULL;
 
 static bool s_timed_play_active_session = false;
 static unsigned long s_timed_play_countdown_start_millis = 0;
+
+// 触发UI更新的回调
 
 static void trigger_status_update() {
     if (s_status_update_callback) {
@@ -59,8 +62,8 @@ static void handle_playback_finished() {
 }
 
 void ParrotSettings_Init() {
-    Serial.println("ParrotSettings: Initializing with new AudioPlayer...");
-    AudioPlayer_Init();
+    Serial.println("ParrotSettings: Initializing...");
+    // AudioPlayer_Init() 在 AppController 中被调用
     
     s_current_file_selection_index = -1;
     s_playlist.file_count = 0;
@@ -75,6 +78,22 @@ void ParrotSettings_Init() {
     Serial.println("ParrotSettings: Initialization complete.");
     trigger_status_update();
 }
+
+void ParrotSettings_Handle() {
+    // AudioPlayer_Loop(); // <--- 已删除！新设计不再需要此行
+
+    static bool last_playing_state = false;
+    bool current_playing_state = AudioPlayer_IsPlaying();
+    
+    if (last_playing_state && !current_playing_state) {
+        handle_playback_finished();
+    }
+    
+    last_playing_state = current_playing_state;
+
+    ParrotSettings_UpdateTimedPlayState();
+}
+
 
 bool ParrotSettings_ScanAudioFiles() {
     Serial.println("ParrotSettings: Scanning audio files from SD card...");
@@ -92,6 +111,7 @@ int ParrotSettings_GetFileCount() {
 
 const char* ParrotSettings_GetFileName(int index) {
     if (index >= 0 && index < s_playlist.file_count) {
+        // 从完整路径中提取文件名
         const char* last_slash = strrchr(s_playlist.files[index], '/');
         return last_slash ? last_slash + 1 : s_playlist.files[index];
     }
@@ -275,17 +295,4 @@ void ParrotSettings_GetFormattedRemainingCountdown(char* buffer, size_t buffer_l
 
 void ParrotSettings_RegisterStatusUpdateCallback(parrot_status_update_cb_t cb) {
     s_status_update_callback = cb;
-}
-
-void ParrotSettings_Handle() {
-    static bool last_playing_state = false;
-    bool current_playing_state = AudioPlayer_IsPlaying();
-    
-    if (last_playing_state && !current_playing_state) {
-        handle_playback_finished();
-    }
-    
-    last_playing_state = current_playing_state;
-
-    ParrotSettings_UpdateTimedPlayState();
 }

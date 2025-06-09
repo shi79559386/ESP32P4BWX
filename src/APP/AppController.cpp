@@ -1,7 +1,6 @@
-// 文件: src/APP/AppController.cpp
-
+// 文件: src/APP/AppController.cpp (最终版 - 适配 AppGlobal)
 #include "AppController.h"
-#include "AppGlobal.h"
+#include "AppGlobal.h" // <--- 关键：包含全局变量头文件
 #include "AppTasks.h"
 #include "../Config/Config.h"
 #include "Display/DisplayDriver.h"
@@ -14,6 +13,7 @@
 #include "Peripherals/PCA9548A.h"
 #include "Peripherals/OutputControls.h"
 #include "Peripherals/FrameAnimation.h"
+#include "Peripherals/AudioPlayer.h"
 #include "SettingsLogic/FreshAirSettings.h"
 #include "SettingsLogic/SystemSettings.h"
 #include "SettingsLogic/LightingSettings.h"
@@ -25,51 +25,12 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "driver/spi_master.h"
+#include "esp_task_wdt.h"
 #include <SD.h>
 #include <FS.h>
-#include "../Config/LGFX_Config.h" // 引入LGFX配置
+#include "LGFX_Config.h"
 
-// 声明全局的LGFX对象
-extern LGFX lcd;
-
-static bool audio_board_comm_ok = false;
 static bool main_sd_is_initialized_and_tested = false;
-
-static bool checkAudioBoard_Safe();
-static void initSensors_Safe();
-
-static bool checkAudioBoard_Safe() {
-    Serial.println("=== 检查音频板通信 ===");
-#if ENABLE_AUDIO_BOARD
-    Serial.printf("初始化 Serial1 (RX=%d, TX=%d)\n", AUDIO_BOARD_RX_PIN, AUDIO_BOARD_TX_PIN);
-    AUDIO_BOARD_COMM_SERIAL.begin(AUDIO_BOARD_COMM_BAUD, SERIAL_8N1, AUDIO_BOARD_RX_PIN, AUDIO_BOARD_TX_PIN);
-    delay(100);
-    for (int attempt = 0; attempt < 2; attempt++) {
-        Serial.printf("PING 尝试 %d/2\n", attempt + 1);
-        AUDIO_BOARD_COMM_SERIAL.println("PING");
-        AUDIO_BOARD_COMM_SERIAL.flush();
-        unsigned long start = millis();
-        while (millis() - start < 1000) {
-            if (AUDIO_BOARD_COMM_SERIAL.available()) {
-                String line = AUDIO_BOARD_COMM_SERIAL.readStringUntil('\n');
-                line.trim();
-                if (line.startsWith("ACK_PING:PONG")) {
-                    Serial.println("✅ 音频板通信成功");
-                    return true;
-                }
-            }
-            delay(10);
-            yield();
-        }
-        delay(100);
-    }
-    Serial.println("❌ 音频板通信失败");
-    return false;
-#else
-    Serial.println("📝 音频板已禁用");
-    return false;
-#endif
-}
 
 static void initSensors_Safe() {
     Serial.println("=== 初始化传感器 ===");
@@ -89,12 +50,21 @@ static void initSensors_Safe() {
 #endif
 }
 
-
 void AppController_Init(void) {
     Serial.println("\n========================================");
     Serial.println("=== AppController Initialization Started... ===");
     Serial.println("========================================");
+    
+    esp_task_wdt_delete(NULL);
 
+    // --- 1. 初始化全局变量 ---
+    AppGlobal_Init(); // <--- 关键：首先初始化全局状态
+
+    // --- 2. 初始化显示和LVGL ---
+    display_init(); 
+    Serial.println("✅ Unified display & LVGL initialization complete.");
+
+    // --- 3. 初始化 SD卡 ---
     #if ENABLE_SD_CARD
     spi_bus_config_t sd_bus_config = {};
     sd_bus_config.mosi_io_num = MAIN_SD_MOSI_PIN;
@@ -117,7 +87,7 @@ void AppController_Init(void) {
             if(main_sd_is_initialized_and_tested) {
                 Serial.printf("✅ SD Card mounted. Type: %d, Size: %llu MB\n", SD.cardType(), SD.cardSize() / (1024 * 1024));
             } else {
-                 Serial.println("❌ SD Card found but type is unknown.");
+                Serial.println("❌ SD Card found but type is unknown.");
             }
         }
     }
@@ -125,45 +95,60 @@ void AppController_Init(void) {
     main_sd_is_initialized_and_tested = false;
     #endif
     
-    ::delay(200); yield();
-
-    lv_init();
-    display_init(); 
-    ui_styles_init();
+    ::delay(100); yield();
     
+    // --- 4. 播放开机动画 ---
     if (main_sd_is_initialized_and_tested) {
         if (FrameAnimation_Init()) {
-            FrameAnimation_PlayBootSequence(lcd); // <--- 修改: tft -> lcd
+            FrameAnimation_PlayBootSequence(lcd);
             FrameAnimation_DeInit();
         }
-    } else {
-        lcd.fillScreen(TFT_BLACK); // <--- 修改: tft -> lcd
     }
-    ::delay(200); yield();
+    ::delay(100); yield();
 
+    // --- 5. 初始化所有其他模块 ---
     initSensors_Safe();
-    init_output_controls();
-    audio_board_comm_ok = checkAudioBoard_Safe();
-
+    init_output_controls(); 
+    
     SystemSettings_Init();
     LightingSettings_Init();
     
-    if(audio_board_comm_ok) {
+    if (main_sd_is_initialized_and_tested) {
+        Serial.println("SD卡就绪, 初始化音频系统...");
+        AudioPlayer_Init();
         ParrotSettings_Init();
     } else {
-        Serial.println("Skipping ParrotSettings init due to communication failure.");
+        Serial.println("SD卡未就绪, 跳过音频系统初始化.");
     }
 
     FreshAirSettings_Init();
     HatchingSettings_Init();
     HumidifySettings_Init();
     ThermalSettings_Init();
+    ThermalControl_Init(); 
     AppTasks_Init();
+
+    // --- 6. 创建并加载UI界面 ---
+    ui_styles_init();
+    
+    // --- 关键修改：使用 AppGlobal.h 中定义的全局屏幕指针 ---
+    screen_main    = lv_obj_create(nullptr);
+    screen_control = lv_obj_create(nullptr);
+    screen_setting = lv_obj_create(nullptr);
+    
+    // 在对应的屏幕上构建UI
+    create_main_ui(screen_main);
+    create_control_page_ui(screen_control);
+    create_setting_page_ui(screen_setting);
+    
+    // 加载主屏幕
+    lv_disp_load_scr(screen_main);
     
     Serial.println("\n========================================");
     Serial.println("=== AppController Initialization Finished ===");
     Serial.println("========================================\n");
 }
+
 
 bool AppController_IsMainSDReady() {
     return main_sd_is_initialized_and_tested;

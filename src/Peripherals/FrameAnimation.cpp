@@ -7,10 +7,6 @@
 #include "../Config/LGFX_Config.h"  // 包含 LGFX 定义
 #include "App/AppController.h"      // 用于检查 SD 卡是否就绪
 
-// 在某个 .cpp 里实际实例化这个全局对象：
-//    LGFX lcd;
-// 这里头文件 extern 声明即可。
-extern LGFX lcd;
 
 // 状态变量
 static bool s_initialized = false;

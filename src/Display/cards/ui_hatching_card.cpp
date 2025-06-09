@@ -290,7 +290,7 @@ void create_hatching_card_ui(lv_obj_t* parent_dashboard) {
 
     // ============== 开关 ==============
     card_hatching_main_switch = lv_switch_create(content_area_card);
-    lv_obj_add_style(card_hatching_main_switch, &style_switch_on_cyan, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_style(card_hatching_main_switch, &style_switch_on_cyan, (lv_style_selector_t)(LV_PART_INDICATOR | LV_STATE_CHECKED));
     lv_obj_add_event_cb(card_hatching_main_switch, hatching_card_main_toggle_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_align(card_hatching_main_switch, LV_ALIGN_BOTTOM_RIGHT, -CARD_SWITCH_RIGHT_MARGIN, -CARD_SWITCH_BOTTOM_MARGIN);
 

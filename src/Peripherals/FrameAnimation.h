@@ -6,8 +6,6 @@
 #include <stdbool.h>
 #include "../Config/LGFX_Config.h" // 我们在这里引入新定义的 LGFX 类型
 
-// 全局共享的 LGFX 对象，在别处定义／实例化
-extern LGFX lcd;
 
 /**
  * @brief 初始化动画模块（只要调用一次即可）

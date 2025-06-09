@@ -17,4 +17,5 @@ extern int touch_last_x, touch_last_y;
 bool touch_hal_init(uint16_t width, uint16_t height, uint8_t rotation);
 void lvgl_touch_read_cb(lv_indev_drv_t *indev_driver, lv_indev_data_t *data);
 
+
 #endif // TOUCH_DRIVER_H

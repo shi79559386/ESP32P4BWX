@@ -114,12 +114,12 @@ void create_thermal_card_ui(lv_obj_t* parent_dashboard) {
 
     // 风机开关 - 上方
     card_thermal_fan_switch = lv_switch_create(switches_container);
-    lv_obj_add_style(card_thermal_fan_switch, &style_switch_on_cyan, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_style(card_thermal_fan_switch, &style_switch_on_cyan, (lv_style_selector_t)(LV_PART_INDICATOR | LV_STATE_CHECKED));
     lv_obj_add_event_cb(card_thermal_fan_switch, thermal_card_fan_toggle_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
     // 加热器开关 - 下方
     card_thermal_heater_switch = lv_switch_create(switches_container);
-    lv_obj_add_style(card_thermal_heater_switch, &style_switch_on_cyan, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_style(card_thermal_heater_switch, &style_switch_on_cyan, (lv_style_selector_t)(LV_PART_INDICATOR | LV_STATE_CHECKED));
     lv_obj_add_event_cb(card_thermal_heater_switch, thermal_card_heater_toggle_event_handler, LV_EVENT_VALUE_CHANGED, NULL);
 
     ThermalSettings_RegisterStatusUpdateCallback(update_thermal_card_status);

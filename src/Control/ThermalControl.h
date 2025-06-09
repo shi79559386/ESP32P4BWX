@@ -19,10 +19,6 @@
 #define RPM_CALCULATION_INTERVAL 2000  // RPM计算间隔2秒
 #define RPM_DEBOUNCE_TIME 100         // 🔥 防抖时间50微秒
 
-// 加湿器控制引脚
-#define HUMIDIFIER_CTRL_PIN 37       // 加湿器控制引脚
-#define FAN_SPEED_PIN       17       // 🔥 风扇转速检测引脚(从18改为36，避免与串口冲突)
-
 // 系统状态枚举
 typedef enum {
     THERMAL_STATE_IDLE,          // 空闲状态

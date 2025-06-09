@@ -10,14 +10,15 @@
 #define USE_SOFTWARE_I2C  1
 
 // --- LEDC (PWM) 配置 ---
-#define LIGHTING_PWM_CHANNEL 0 // 使用 LEDC 通道 0
+#define LIGHTING_PWM_CHANNEL 1 // 使用 LEDC 通道 0
+#define BACKLIGHT_PWM_CHANNEL 0 // 专门留给背光用通道 
 
 
 // --- I2S 引脚定义 (用于 MAX98357A) ---
 // 请根据你的实际接线修改这些引脚
-#define I2S_BCLK_PIN   30 // Bit Clock
-#define I2S_LRC_PIN    29 // Left/Right Clock (or Word Clock)
-#define I2S_DOUT_PIN   28 // Data Out
+#define I2S_BCLK_PIN   47 // Bit Clock
+#define I2S_LRC_PIN    48 // Left/Right Clock (or Word Clock)
+#define I2S_DOUT_PIN   49 // Data Out
 
 // --- Screen Dimensions (固定为 480x320 横屏) ---
 #define screenWidth 480
@@ -38,13 +39,6 @@
 #define ANIM_FRAME_PATH_FORMAT    "video_frames/frame_%04d.bin"
 #define ANIM_FRAME_BUFFER_LINES   20
 #define TARGET_TOTAL_DURATION_MS  4000
-
-// === 与音频 ESP32-S3 通信的硬件串口定义 ===
-#define AUDIO_BOARD_COMM_SERIAL Serial1 // 主控板使用 Serial1 与音频板通信
-#define AUDIO_BOARD_COMM_BAUD  115200  // 通信波特率，提高到115200
-#define AUDIO_BOARD_RX_PIN     21     // Main ESP32-S3 的 RX1 ← 连接到 Audio ESP32-S3 的 TX2(GPIO21)
-#define AUDIO_BOARD_TX_PIN     14     // Main ESP32-S3 的 TX1 → 连接到 Audio ESP32-S3 的 RX2(GPIO14)
-
 
 
 // --- UI布局常量 ---
@@ -76,7 +70,7 @@
 // --- Touch Panel FT6336 Configuration ---
 #define TOUCH_SCL_PIN 19
 #define TOUCH_SDA_PIN 18
-#define TOUCH_INT_PIN -1
+#define TOUCH_INT_PIN 23
 #define TOUCH_RST_PIN 17
 
 
@@ -93,8 +87,8 @@
 
 #define HEATER_CTRL_PIN     41
 #define FAN_CTRL_PIN        42
-#define FAN_SPEED_PIN       17
-#define HUMIDIFIER_CTRL_PIN 37
+#define FAN_SPEED_PIN       34
+#define HUMIDIFIER_CTRL_PIN 5
 #define LIGHTING_PIN        13  // 假设灯光控制接到GPIO 1
 #define STERILIZE_PIN       2  // 假设杀菌灯接到GPIO 2
 #define FRESH_AIR_PIN       4  // 假设新风扇接到GPIO 4
