@@ -134,7 +134,7 @@ void create_thermal_settings_popup(lv_obj_t *parent_scr) {
     if (thermal_timed_config.enabled) 
         lv_obj_add_state(thermal_timed_enable_switch, LV_STATE_CHECKED);
     lv_obj_add_event_cb(thermal_timed_enable_switch, thermal_timed_enable_switch_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_style(thermal_timed_enable_switch, &style_switch_on_cyan, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_add_style(thermal_timed_enable_switch, &style_switch_on_cyan, static_cast<lv_style_selector_t>(LV_PART_INDICATOR) | static_cast<lv_style_selector_t>(LV_STATE_CHECKED));
 
     // 时间选择滚轮容器
     thermal_countdown_rollers_container = lv_obj_create(timed_section_cont);

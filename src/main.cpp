@@ -1,25 +1,29 @@
-// 文件: src/main.cpp (最终修正版)
-
 #include <Arduino.h>
-#include "lvgl.h" // <--- 为了调用 lv_timer_handler，需要包含它
+#include "lvgl.h"                // lv_tick_inc/lv_timer_handler
 #include "App/AppController.h"
-#include "App/AppGlobal.h" // <--- 添加这一行
+#include "App/AppGlobal.h"
 #include "App/AppTasks.h"
 
 void setup() {
   Serial.begin(115200);
-  delay(100); 
+  delay(100);
 
+  // 一切初始化（包括板载 SDMMC 挂载 + 动画后台任务 + 其它模块）
   AppController_Init();
 
   Serial.println("🎉 System is Ready to Run Tasks!");
 }
 
 void loop() {
+  // 更新传感器数据
   AppGlobal_UpdateSensorData();
-  // 在主循环中，我们需要同时处理 LVGL 的任务和我们自己的应用任务
-  lv_tick_inc(5);     // 通知 LVGL 已过 5ms
-  lv_timer_handler(); // LVGL 的心跳，负责UI刷新和动画
-  AppTasks_Handler(); // 我们自己的应用任务处理器
-  delay(5); // 短暂延时，让系统有机会处理其他事情
+
+  // LVGL 心跳
+  lv_tick_inc(5);
+  lv_timer_handler();
+
+  // 应用任务
+  AppTasks_Handler();
+
+  delay(5);
 }

@@ -24,13 +24,17 @@
 #include "Control/ThermalControl.h"
 #include <Arduino.h>
 #include <Wire.h>
-#include "driver/spi_master.h"
 #include "esp_task_wdt.h"
-#include <SD.h>
-#include <FS.h>
+#include <SD_MMC.h>    // ← 用 SDMMC 驱动，全局取代 <SD.h>/<FS.h>
 #include "LGFX_Config.h"
 
+
+
 static bool main_sd_is_initialized_and_tested = false;
+static bool audio_sd_is_initialized_and_tested = false;
+
+SPIClass spi_audio(HSPI);
+
 
 static void initSensors_Safe() {
     Serial.println("=== 初始化传感器 ===");
@@ -50,104 +54,111 @@ static void initSensors_Safe() {
 #endif
 }
 
-void AppController_Init(void) {
-    Serial.println("\n========================================");
-    Serial.println("=== AppController Initialization Started... ===");
-    Serial.println("========================================");
-    
-    esp_task_wdt_delete(NULL);
+void AppController_Init() {
+    Serial.println("=== AppController Init…");
 
-    // --- 1. 初始化全局变量 ---
-    AppGlobal_Init(); // <--- 关键：首先初始化全局状态
+    // 1. 全局 + LVGL init
+    AppGlobal_Init();
+    display_init();
 
-    // --- 2. 初始化显示和LVGL ---
-    display_init(); 
-    Serial.println("✅ Unified display & LVGL initialization complete.");
-
-    // --- 3. 初始化 SD卡 ---
+    // 2. 板载 SDMMC 挂载（用于动画/日志/配置）
     #if ENABLE_SD_CARD
-    spi_bus_config_t sd_bus_config = {};
-    sd_bus_config.mosi_io_num = MAIN_SD_MOSI_PIN;
-    sd_bus_config.miso_io_num = MAIN_SD_MISO_PIN;
-    sd_bus_config.sclk_io_num = MAIN_SD_SCLK_PIN;
-    sd_bus_config.quadwp_io_num = -1;
-    sd_bus_config.quadhd_io_num = -1;
-    sd_bus_config.max_transfer_sz = 4092;
-    esp_err_t ret = spi_bus_initialize(SPI3_HOST, &sd_bus_config, SPI_DMA_CH_AUTO);
-    if (ret != ESP_OK) {
-        Serial.printf("❌ SD Card SPI Bus (SPI3_HOST) init failed: %s\n", esp_err_to_name(ret));
-        main_sd_is_initialized_and_tested = false;
+    // 挂载到 /sdcard
+    if (SD_MMC.begin(BOOT_SD_MOUNT_POINT, false)) {
+      main_sd_is_initialized_and_tested = true;
+      Serial.printf("✅ SDMMC mounted at %s\n", BOOT_SD_MOUNT_POINT);
     } else {
-        Serial.println("✅ SD Card SPI Bus (SPI3_HOST) initialized.");
-        if (!SD.begin(MAIN_SD_CS_PIN, SPI3_HOST)) {
-            Serial.println("❌ SD.begin() failed.");
-            main_sd_is_initialized_and_tested = false;
-        } else {
-            main_sd_is_initialized_and_tested = (SD.cardType() != CARD_NONE);
-            if(main_sd_is_initialized_and_tested) {
-                Serial.printf("✅ SD Card mounted. Type: %d, Size: %llu MB\n", SD.cardType(), SD.cardSize() / (1024 * 1024));
-            } else {
-                Serial.println("❌ SD Card found but type is unknown.");
-            }
-        }
+      main_sd_is_initialized_and_tested = false;
+      Serial.printf("❌ SDMMC mount failed at %s\n", BOOT_SD_MOUNT_POINT);
     }
-    #else
-    main_sd_is_initialized_and_tested = false;
-    #endif
-    
-    ::delay(100); yield();
-    
-    // --- 4. 播放开机动画 ---
+      // ← 在这里加入目录遍历，确保卡里 video_frames 存在
     if (main_sd_is_initialized_and_tested) {
-        if (FrameAnimation_Init()) {
-            FrameAnimation_PlayBootSequence(lcd);
-            FrameAnimation_DeInit();
+        Serial.println(">>> SD 根目录列表 <<<");
+        File root = SD_MMC.open(BOOT_SD_MOUNT_POINT);
+        if (root && root.isDirectory()) {
+            File f = root.openNextFile();
+            while (f) {
+                Serial.printf("  %s%s\n", f.name(), f.isDirectory() ? "/" : "");
+                f = root.openNextFile();
+            }
+            root.close();
+        }
+        Serial.println(">>> video_frames 子目录列表 <<<");
+        File vf = SD_MMC.open(String(BOOT_SD_MOUNT_POINT) + "/video_frames");
+        if (vf && vf.isDirectory()) {
+            File ff = vf.openNextFile();
+            while (ff) {
+                Serial.println(String("  ") + ff.name());
+                ff = vf.openNextFile();
+            }
+            vf.close();
         }
     }
-    ::delay(100); yield();
+  #else
+    main_sd_is_initialized_and_tested = false;
+  #endif
+  
 
-    // --- 5. 初始化所有其他模块 ---
+
+
+    // 4. 其他模块初始化
     initSensors_Safe();
-    init_output_controls(); 
-    
+    init_output_controls();
     SystemSettings_Init();
     LightingSettings_Init();
-    
-    if (main_sd_is_initialized_and_tested) {
-        Serial.println("SD卡就绪, 初始化音频系统...");
+
+
+
+    // 只有外接 SD 准备好了才初始化音频系统
+    if (audio_sd_is_initialized_and_tested) {
+        Serial.println("Audio SD ready, initializing audio system...");
         AudioPlayer_Init();
         ParrotSettings_Init();
     } else {
-        Serial.println("SD卡未就绪, 跳过音频系统初始化.");
+        Serial.println("Audio SD not ready, skipping audio initialization.");
     }
 
     FreshAirSettings_Init();
     HatchingSettings_Init();
     HumidifySettings_Init();
     ThermalSettings_Init();
-    ThermalControl_Init(); 
+    ThermalControl_Init();
     AppTasks_Init();
 
-    // --- 6. 创建并加载UI界面 ---
-    ui_styles_init();
-    
-    // --- 关键修改：使用 AppGlobal.h 中定义的全局屏幕指针 ---
+    #if ENABLE_SD_CARD
+    if (main_sd_is_initialized_and_tested) {
+      Serial.println(">>> Before Boot Animation");
+      FrameAnimation_Init();
+      Serial.println(">>> After Init, about to call PlayBootSequence()");
+      if (!FrameAnimation_PlayBootSequence(lcd)) {
+        Serial.println("!!! PlayBootSequence returned false");
+      }
+      Serial.println(">>> After PlayBootSequence()");
+      FrameAnimation_DeInit();
+      Serial.println(">>> After DeInit()");
+    }
+  #endif
+  
+
+
+  // 4. 创建并加载 UI
+  ui_styles_init();
+
     screen_main    = lv_obj_create(nullptr);
     screen_control = lv_obj_create(nullptr);
     screen_setting = lv_obj_create(nullptr);
-    
-    // 在对应的屏幕上构建UI
+
     create_main_ui(screen_main);
     create_control_page_ui(screen_control);
     create_setting_page_ui(screen_setting);
-    
-    // 加载主屏幕
+
     lv_disp_load_scr(screen_main);
-    
+
     Serial.println("\n========================================");
     Serial.println("=== AppController Initialization Finished ===");
     Serial.println("========================================\n");
 }
+
 
 
 bool AppController_IsMainSDReady() {
@@ -157,7 +168,7 @@ bool AppController_IsMainSDReady() {
 
 bool AppController_WriteSystemLog(const char* log_message) {
     if (!main_sd_is_initialized_and_tested || !log_message) return false;
-    File logFile = SD.open("/logs/system.log", FILE_APPEND);
+    File logFile = SD_MMC.open("/logs/system.log", FILE_APPEND);
     if (!logFile) { return false; }
     char timestamp[32] = "----/--/-- --:--:--";
     if (is_ds3231_available() && pca9548a_select_channel((pca9548a_channel_t)PCA9548A_CHANNEL_DS3231_AHT20_1)) {
@@ -178,7 +189,7 @@ bool AppController_WriteSystemLog(const char* log_message) {
 
 bool AppController_WriteTemperatureLog(float temp1, int hum1, float temp2, int hum2) {
     if (!main_sd_is_initialized_and_tested) return false;
-    File tempLog = SD.open("/logs/temperature.log", FILE_APPEND);
+    File tempLog = SD_MMC.open("/logs/temperature.log", FILE_APPEND);
     if (!tempLog) { return false; }
     char timestamp[32] = "----/--/-- --:--:--";
     if (is_ds3231_available()) {
@@ -199,7 +210,7 @@ bool AppController_WriteTemperatureLog(float temp1, int hum1, float temp2, int h
 bool AppController_LoadConfig(const char* config_name, char* buffer, size_t buffer_size) {
     if (!main_sd_is_initialized_and_tested || !config_name || !buffer || buffer_size == 0) return false;
     char filepath[64]; snprintf(filepath, sizeof(filepath), "/config/%s", config_name);
-    File configFile = SD.open(filepath, FILE_READ);
+    File configFile = SD_MMC.open(filepath, FILE_READ);
     if (!configFile) { return false; }
     size_t bytesRead = configFile.readBytes(buffer, buffer_size - 1);
     buffer[bytesRead] = '\0'; configFile.close();
@@ -209,7 +220,7 @@ bool AppController_LoadConfig(const char* config_name, char* buffer, size_t buff
 bool AppController_SaveConfig(const char* config_name, const char* config_data) {
     if (!main_sd_is_initialized_and_tested || !config_name || !config_data) return false;
     char filepath[64]; snprintf(filepath, sizeof(filepath), "/config/%s", config_name);
-    File configFile = SD.open(filepath, FILE_WRITE);
+    File configFile = SD_MMC.open(filepath, FILE_WRITE);
     if (!configFile) { return false; }
     configFile.print(config_data);
     configFile.close();
@@ -220,33 +231,33 @@ bool AppController_SaveConfig(const char* config_name, const char* config_data) 
 
 bool AppController_CheckSDSpace(uint64_t* total_mb, uint64_t* used_mb, uint64_t* free_mb) {
     if (!main_sd_is_initialized_and_tested) return false;
-    if (total_mb) *total_mb = SD.totalBytes() / (1024 * 1024);
-    if (used_mb) *used_mb = SD.usedBytes() / (1024 * 1024);
-    if (free_mb) *free_mb = (SD.totalBytes() - SD.usedBytes()) / (1024 * 1024);
+    if (total_mb) *total_mb = SD_MMC.totalBytes() / (1024 * 1024);
+    if (used_mb) *used_mb = SD_MMC.usedBytes() / (1024 * 1024);
+    if (free_mb) *free_mb = (SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
     return true;
 }
 
 bool AppController_CleanupOldLogs() {
     if (!main_sd_is_initialized_and_tested) return false;
-    File sysLog = SD.open("/logs/system.log", FILE_READ);
+    File sysLog = SD_MMC.open("/logs/system.log", FILE_READ);
     if (sysLog) {
         size_t fileSize = sysLog.size(); sysLog.close();
         if (fileSize > 1024 * 1024) {
             Serial.println("系统日志文件过大，进行备份...");
             char backup_name[64]; snprintf(backup_name, sizeof(backup_name), "/logs/system_backup_%lu.log", ::millis());
-            if (SD.rename("/logs/system.log", backup_name)) {
+            if (SD_MMC.rename("/logs/system.log", backup_name)) {
                 Serial.printf("✅ 日志已备份为: %s\n", backup_name);
                 AppController_WriteSystemLog("日志文件已备份并重新开始"); return true;
             } else { Serial.println("❌ 日志备份失败"); }
         }
     }
-    File tempLog = SD.open("/logs/temperature.log", FILE_READ);
+    File tempLog = SD_MMC.open("/logs/temperature.log", FILE_READ);
     if (tempLog) {
         size_t fileSize = tempLog.size(); tempLog.close();
         if (fileSize > 2 * 1024 * 1024) {
             Serial.println("温度日志文件过大，进行备份...");
             char backup_name[64]; snprintf(backup_name, sizeof(backup_name), "/logs/temperature_backup_%lu.log", ::millis());
-            if (SD.rename("/logs/temperature.log", backup_name)) {
+            if (SD_MMC.rename("/logs/temperature.log", backup_name)) {
                 Serial.printf("✅ 温度日志已备份为: %s\n", backup_name); return true;
             }
         }
@@ -255,16 +266,30 @@ bool AppController_CleanupOldLogs() {
 }
 
 void AppController_ListSDFiles(const char* dirname) {
-    if (!main_sd_is_initialized_and_tested) { Serial.println("SD卡未就绪"); return; }
-    File root = SD.open(dirname);
-    if (!root) { Serial.printf("无法打开目录: %s\n", dirname); return; }
-    if (!root.isDirectory()) { Serial.printf("%s 不是目录\n", dirname); root.close(); return; }
-    Serial.printf("=== 目录内容: %s ===\n", dirname);
-    File file = root.openNextFile();
-    while (file) {
-        if (file.isDirectory()) { Serial.printf("  📁 %s/\n", file.name()); }
-        else { Serial.printf("  📄 %s (%lu bytes)\n", file.name(), file.size()); }
-        file = root.openNextFile();
+    if (!main_sd_is_initialized_and_tested) {
+        Serial.println("SD卡未就绪");
+        return;
     }
-    root.close(); Serial.println("=== 目录列表结束 ===");
+    File root = SD_MMC.open(dirname);
+    if (!root) {
+        Serial.printf("无法打开目录: %s\n", dirname);
+        return;
+    }
+    if (!root.isDirectory()) {
+        Serial.printf("%s 不是目录\n", dirname);
+        root.close();
+        return;
+    }
+    Serial.printf("=== 目录内容: %s ===\n", dirname);
+    File file = root.openNextFile();        // 正确定义 file
+    while (file) {
+        if (file.isDirectory()) {
+            Serial.printf("  📁 %s/\n", file.name());
+        } else {
+            Serial.printf("  📄 %s (%lu bytes)\n", file.name(), file.size());
+        }
+        file = root.openNextFile();         // 继续遍历
+    }
+    root.close();
+    Serial.println("=== 目录列表结束 ===");
 }

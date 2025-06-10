@@ -6,7 +6,8 @@
 #include "../Peripherals/PCA9548A.h"
 
 #define ENABLE_SENSOR_MODULE 0  // 0=跳过传感器，1=启用传感器
-#define ENABLE_SD_CARD 0 // 设置为 1 尝试启用SD卡和开机动画, 设置为 0 则完全跳过
+#define ENABLE_SD_CARD    1   // 板载动画
+#define ENABLE_AUDIO_SD   0   // 外接音频 // 设置为 1 尝试启用SD卡和开机动画, 设置为 0 则完全跳过
 #define USE_SOFTWARE_I2C  1
 
 // --- LEDC (PWM) 配置 ---
@@ -33,10 +34,11 @@
 
 // --- Boot Animation Configuration ---
 #define LVGL_INTERNAL_RAM_BUFFER_LINES 20
-#define ANIM_FRAME_WIDTH          screenWidth
-#define ANIM_FRAME_HEIGHT         screenHeight
+#define ANIM_FRAME_WIDTH          480
+#define ANIM_FRAME_HEIGHT         320
 #define ANIM_TOTAL_FRAMES         47
 #define ANIM_FRAME_PATH_FORMAT    "video_frames/frame_%04d.bin"
+#define BOOT_SD_MOUNT_POINT   "/sdcard"
 #define ANIM_FRAME_BUFFER_LINES   20
 #define TARGET_TOTAL_DURATION_MS  4000
 
@@ -49,15 +51,6 @@
 #define LVGL_INTERNAL_RAM_BUFFER_LINES 20
 
 #define PARROT_DEFAULT_VOLUME 50  // 默认音量 (0-100)
-
-//#define TFT_BL   -1            // LED back-light control pin
- //#define TFT_BACKLIGHT_ON HIGH  // Level to turn ON back-light (HIGH or LOW)
-
-// ###### EDIT THE PIN NUMBERS IN THE LINES FOLLOWING TO SUIT YOUR ESP32 SETUP   ######
-
-// For ESP32 Dev board (only tested with ILI9341 display)
-// The hardware SPI can be mapped to any pins
-
 
 #define TFT_BL   53            // LED back-light control pin
 #define TFT_MISO 31
@@ -96,10 +89,14 @@
 
 
 
-#define MAIN_SD_CS_PIN          38   // 保持不变，这个是安全的
-#define MAIN_SD_MOSI_PIN        35   // 改为安全GPIO (避开GPIO45!)
-#define MAIN_SD_MISO_PIN        36   // 改为安全GPIO  
-#define MAIN_SD_SCLK_PIN        37   // 改为安全GPIO (避开GPIO47!)
+// --- 板载 microSD（开机动画 用 SDMMC）---
+#define BOOT_SD_MOUNT_POINT    "/sdcard"
+
+// --- 外接音频 SD（SPI 模式）---
+#define AUDIO_SD_CS_PIN        38
+#define AUDIO_SD_SCLK_PIN      37
+#define AUDIO_SD_MISO_PIN      36
+#define AUDIO_SD_MOSI_PIN      35
 
 #define TOUCH_PANEL_NATIVE_WIDTH  320 // 触摸屏IC未经旋转时的物理X最大值
 #define TOUCH_PANEL_NATIVE_HEIGHT 480 // 触摸屏IC未经旋转时的物理Y最大值

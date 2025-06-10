@@ -45,7 +45,7 @@ void touch_init(unsigned short int w, unsigned short int h, unsigned char r) {
             break;
     }
     
-    Serial.printf("TouchDriver: 厂家原始touch_init %dx%d, 旋转:%d\n", w, h, r);
+  
     // 1) 初始化 I2C
     Wire.begin(TOUCH_SDA_PIN, TOUCH_SCL_PIN);
 
@@ -63,7 +63,7 @@ void touch_init(unsigned short int w, unsigned short int h, unsigned char r) {
     ts.begin();
     ts.setRotation(r);
     
-    Serial.println("TouchDriver: ✅ 厂家原始初始化完成（占用Wire到5,6）");
+   
 }
 
 // ✅ 厂家原始的touch_touched函数

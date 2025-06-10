@@ -4,10 +4,9 @@
 #define APP_CONTROLLER_H
 
 #include "LGFX_Config.h" // 引入LGFX配置
-#include <SPI.h>
-#include <SD.h>
+#include <SD_MMC.h>
 
-bool initCardAndTest();
+
 void AppController_Init(void);
 bool AppController_IsMainSDReady();
 bool AppController_WriteSystemLog(const char* log_message);

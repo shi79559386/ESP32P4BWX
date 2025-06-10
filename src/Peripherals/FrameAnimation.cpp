@@ -1,11 +1,14 @@
-#include "FrameAnimation.h"
 #include "../Config/Config.h"
-#include <SD.h>
+#include "../Config/LGFX_Config.h"
+#include "FrameAnimation.h"
+#include "App/AppController.h"
 #include <Arduino.h>
 #include <algorithm>
 #include <esp_task_wdt.h>
-#include "../Config/LGFX_Config.h"  // 包含 LGFX 定义
-#include "App/AppController.h"      // 用于检查 SD 卡是否就绪
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <SD_MMC.h>
 
 
 // 状态变量
@@ -13,17 +16,43 @@ static bool s_initialized = false;
 static bool s_is_playing = false;
 static bool s_loop_playback = false;
 static int  s_current_frame_index = 0;
+static uint16_t* full_frame_buf = nullptr;
+static void animationTask(void* parm);
 
 // 临时的行缓冲区
 static uint16_t frame_chunk_buffer[ANIM_FRAME_WIDTH * ANIM_FRAME_BUFFER_LINES];
 
+
+void FrameAnimation_StartTask(LGFX& tft) {
+    if (s_is_playing) return;
+    xTaskCreatePinnedToCore(
+        animationTask, "AnimTask", 4096, &tft, 1, nullptr, 1
+    );
+}
+
+// 任务函数
+static void animationTask(void* parm) {
+    LGFX* pTft = static_cast<LGFX*>(parm);
+    FrameAnimation_Init();
+    FrameAnimation_PlayBootSequence(*pTft);
+    FrameAnimation_DeInit();
+    vTaskDelete(nullptr);
+}
+
 bool FrameAnimation_Init(void) {
     if (s_initialized) return true;
+    size_t fb_sz = size_t(ANIM_FRAME_WIDTH) * ANIM_FRAME_HEIGHT * sizeof(uint16_t);
+    full_frame_buf = (uint16_t*)heap_caps_malloc(fb_sz, MALLOC_CAP_SPIRAM);
+    if (full_frame_buf) {
+        Serial.printf("✅ PSRAM 缓冲: %u bytes\n", (unsigned)fb_sz);
+    } else {
+        Serial.println("⚠️ PSRAM 分配失败，回退分段");
+    }
     s_initialized = true;
     s_current_frame_index = 0;
-    Serial.println("FrameAnimation: 初始化完成");
     return true;
 }
+
 
 void FrameAnimation_Start(bool loop) {
     s_is_playing        = true;
@@ -60,57 +89,50 @@ void FrameAnimation_DeInit(void) {
 }
 
 bool FrameAnimation_PlayBootSequence(LGFX& tft) {
-    // 确保初始化且 SD 卡就绪
+    Serial.println("▶️ FrameAnimation_PlayBootSequence start");
     if (!s_initialized || !AppController_IsMainSDReady()) return false;
-
-    // 计算总帧平均间隔
-    const float interval_ms = float(TARGET_TOTAL_DURATION_MS) / ANIM_TOTAL_FRAMES;
     FrameAnimation_Start(false);
 
-    char frame_path[128];
-    uint32_t start_ts = ::millis();
-    int    frames_shown = 0;
+    const int w = ANIM_FRAME_WIDTH, h = ANIM_FRAME_HEIGHT, chunk_h = ANIM_FRAME_BUFFER_LINES;
+    char path[128];
+    uint32_t start_ts = millis();
+    int frame_cnt = 0;
 
-    while (FrameAnimation_GetAndAdvanceToNextFramePath(frame_path, sizeof(frame_path))) {
-        esp_task_wdt_reset();  // 喂狗
-
-        // 打开 SD 卡上的原始像素文件
-        File f = SD.open(frame_path);
+    while (FrameAnimation_GetAndAdvanceToNextFramePath(path, sizeof(path))) {
+        Serial.printf("🔄 Frame %d → %s\n", ++frame_cnt, path);
+        // ↓↓↓ 这里改成直接 open(path) ↓↓↓
+        Serial.printf("    opening: %s\n", path);
+        File f = SD_MMC.open(path);
         if (!f) {
-            Serial.printf("❌ 无法打开动画帧 %s\n", frame_path);
-            FrameAnimation_Stop();
-            return false;
+            Serial.printf("❌ open failed: %s\n", path);
+            break;
         }
 
-        // 分行读取并绘制
-        for (int y = 0; y < ANIM_FRAME_HEIGHT; y += ANIM_FRAME_BUFFER_LINES) {
-            int h = std::min(ANIM_FRAME_BUFFER_LINES, ANIM_FRAME_HEIGHT - y);
-            size_t bytes_to_read = ANIM_FRAME_WIDTH * h * sizeof(uint16_t);
-            size_t br = f.read((uint8_t*)frame_chunk_buffer, bytes_to_read);
-            if (br != bytes_to_read) {
-                Serial.printf("⚠️ 帧 %s 读取到 %u/%u 字节\n",
-                              frame_path, (unsigned)br, (unsigned)bytes_to_read);
+        tft.startWrite();
+        tft.setWindow(0, 0, w, h);
+
+        for (int y = 0; y < h; y += chunk_h) {
+            int lines = min(chunk_h, h - y);
+            size_t bytes = size_t(w) * lines * sizeof(uint16_t);
+            size_t rd = f.read((uint8_t*)frame_chunk_buffer, bytes);
+            Serial.printf("      🔽 read y=%d lines=%d bytes=%u\n", y, lines, (unsigned)rd);
+            for (size_t i = 0; i < size_t(w) * lines; i++) {
+                frame_chunk_buffer[i] = __builtin_bswap16(frame_chunk_buffer[i]);
             }
-
-            // 使用 LovyanGFX 的开始／结束写入流程
-            tft.startWrite();
-            tft.setAddrWindow(0, y, ANIM_FRAME_WIDTH - 1, y + h - 1);
-            tft.writePixels(frame_chunk_buffer, ANIM_FRAME_WIDTH * h);
-            tft.endWrite();
-
-            esp_task_wdt_reset();
+            tft.writePixels(frame_chunk_buffer, w * lines);
             yield();
         }
+
+        tft.endWrite();
         f.close();
 
-        // 根据时间差做延时
-        frames_shown++;
-        int32_t wait_ms = int32_t(start_ts + frames_shown * interval_ms - ::millis());
-        if (wait_ms > 2) {
-            ::delay(wait_ms);
-        }
+        // 严格帧率
+        float target = start_ts + frame_cnt * (TARGET_TOTAL_DURATION_MS / float(ANIM_TOTAL_FRAMES));
+        int32_t dt = int32_t(target) - int32_t(millis());
+        if (dt > 0) vTaskDelay(pdMS_TO_TICKS(dt));
     }
 
-    FrameAnimation_Stop();
+    Serial.println("▶️ FrameAnimation_PlayBootSequence end");
     return true;
 }
+

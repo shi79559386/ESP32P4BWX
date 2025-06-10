@@ -18,7 +18,9 @@ static TaskHandle_t audio_task_handle = NULL;
 static volatile bool g_is_playing_flag = false;
 static volatile bool g_stop_request_flag = false;
 
+
 static uint8_t s_volume = 100;
+
 
 // --- 后台音频播放任务 ---
 void audio_playback_task(void *parameter) {
