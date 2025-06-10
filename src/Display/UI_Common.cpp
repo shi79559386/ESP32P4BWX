@@ -107,69 +107,78 @@ static void init_common_nav_styles_if_needed() {
     lv_style_set_pad_left(&style_btnm_items_default, 5); // 左右留一些边距
     lv_style_set_pad_right(&style_btnm_items_default, 5);
 
-    lv_style_init(&style_btnm_items_checked);
-    lv_style_set_text_font(&style_btnm_items_checked, &fengyahei_s22_bpp4);
-    lv_style_set_text_color(&style_btnm_items_checked, lv_color_white()); // 选中时文字颜色
-    lv_style_set_bg_opa(&style_btnm_items_checked, LV_OPA_TRANSP); // 背景也透明
-    lv_style_set_radius(&style_btnm_items_checked, 0);
-    lv_style_set_outline_width(&style_btnm_items_checked, 0);
-    lv_style_set_shadow_width(&style_btnm_items_checked, 0);
+lv_style_init(&style_btnm_items_checked);
+lv_style_set_text_font(&style_btnm_items_checked, &fengyahei_s22_bpp4);
+lv_style_set_text_color(&style_btnm_items_checked, lv_color_white());
+lv_style_set_bg_opa(&style_btnm_items_checked, LV_OPA_TRANSP);
+lv_style_set_radius(&style_btnm_items_checked, 0);
+lv_style_set_outline_width(&style_btnm_items_checked, 0);
+lv_style_set_shadow_width(&style_btnm_items_checked, 0);
 
-    // 底部指示器
-    lv_style_set_border_color(&style_btnm_items_checked, lv_palette_main(LV_PALETTE_LIGHT_BLUE));
-    lv_style_set_border_width(&style_btnm_items_checked, indicator_height);
-    lv_style_set_border_side(&style_btnm_items_checked, LV_BORDER_SIDE_BOTTOM);
-    lv_style_set_border_opa(&style_btnm_items_checked, LV_OPA_COVER);
+// ★★★ 关键修复 (2/3) ★★★
+// 确保选中状态和默认状态的内边距一致，这样文字才不会上下跳动
+// (直接复用上面为 style_btnm_items_default 计算好的值)
+lv_style_set_pad_top(&style_btnm_items_checked, default_pad_top);
+lv_style_set_pad_bottom(&style_btnm_items_checked, default_pad_bottom);
+lv_style_set_pad_left(&style_btnm_items_checked, 5);
+lv_style_set_pad_right(&style_btnm_items_checked, 5);
 
-    // 调整选中项的上下内边距，为指示器留出空间并保持文本垂直居中
-    lv_coord_t checked_text_available_height = NAV_BAR_HEIGHT - font_height_approx - indicator_height;
-    lv_coord_t checked_pad_top = (checked_text_available_height) / 2;
-    if (checked_pad_top < 0) checked_pad_top = 0;
-    lv_style_set_pad_top(&style_btnm_items_checked, checked_pad_top);
-    lv_style_set_pad_bottom(&style_btnm_items_checked, 0); // 底部指示器占用了空间，所以底部内边距为0
-    
-    lv_style_set_pad_left(&style_btnm_items_checked, 5);
-    lv_style_set_pad_right(&style_btnm_items_checked, 5);
+// ★★★ 关键修复 (3/3) ★★★
+// 底部指示器 (这部分保持不变，但现在它的位置会是正确的)
+lv_style_set_border_color(&style_btnm_items_checked, lv_palette_main(LV_PALETTE_LIGHT_BLUE));
+lv_style_set_border_width(&style_btnm_items_checked, indicator_height);
+lv_style_set_border_side(&style_btnm_items_checked, LV_BORDER_SIDE_BOTTOM);
+lv_style_set_border_opa(&style_btnm_items_checked, LV_OPA_COVER);
+
 
     common_nav_styles_initialized = true;
 }
 
 void create_common_bottom_nav(lv_obj_t *parent_screen, screen_id_t active_screen_id) {
+    // 1. 初始化样式
     init_common_nav_styles_if_needed();
 
-    const lv_coord_t SCREEN_W = lv_obj_get_width(parent_screen); // 使用父屏幕宽度
-    const lv_coord_t LOGO_AREA_WIDTH = 80; 
+    // ★ 稳定性增强：使用 lv_disp_get_hor_res 获取可靠的屏幕宽度 ★
+    const lv_coord_t SCREEN_W = lv_disp_get_hor_res(NULL);
+    const lv_coord_t LOGO_AREA_WIDTH = 80;
 
+    // 2. 创建 Flexbox 容器 (恢复)
     lv_obj_t *nav_flex_container = lv_obj_create(parent_screen);
     lv_obj_remove_style_all(nav_flex_container);
     lv_obj_set_size(nav_flex_container, SCREEN_W, NAV_BAR_HEIGHT);
     lv_obj_align(nav_flex_container, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_obj_set_flex_flow(nav_flex_container, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(nav_flex_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_set_flex_align(nav_flex_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_START); // 垂直居中对齐
     lv_obj_add_style(nav_flex_container, &style_btnm_bg, 0);
 
+
+    // 3. 创建左侧的 Logo 占位区域 (恢复)
     lv_obj_t *logo_placeholder = lv_obj_create(nav_flex_container);
     lv_obj_remove_style_all(logo_placeholder);
     lv_obj_set_size(logo_placeholder, LOGO_AREA_WIDTH, LV_PCT(100));
-    // lv_obj_set_style_bg_color(logo_placeholder, lv_color_hex(0xff0000), 0); // For debugging layout
 
+
+    // 4. 创建按钮矩阵，并让它自动填充剩余空间 (恢复)
     lv_obj_t *btnm = lv_btnmatrix_create(nav_flex_container);
     lv_btnmatrix_set_map(btnm, bottom_nav_btn_map);
     lv_obj_set_height(btnm, LV_PCT(100));
-    lv_obj_set_flex_grow(btnm, 1); // 占据剩余宽度
+    lv_obj_set_flex_grow(btnm, 1); // 关键：让按钮矩阵占据所有剩余宽度
 
-    lv_obj_set_style_bg_opa(btnm, LV_OPA_TRANSP, (lv_style_selector_t)(LV_PART_MAIN));
-    lv_obj_set_style_border_width(btnm, 0, (lv_style_selector_t)(LV_PART_MAIN));
+
+    // 5. 应用按钮的样式 (恢复)
+    lv_obj_set_style_bg_opa(btnm, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(btnm, 0, 0);
     lv_obj_add_style(btnm, &style_btnm_items_default, (lv_style_selector_t)(LV_PART_ITEMS | LV_STATE_DEFAULT));
     lv_obj_add_style(btnm, &style_btnm_items_checked, (lv_style_selector_t)(LV_PART_ITEMS | LV_STATE_CHECKED));
-    // 如果需要按下效果，可以添加 LV_PART_ITEMS | LV_STATE_PRESSED 的样式
 
-    lv_btnmatrix_set_one_checked(btnm, true); // 确保只有一个按钮可以被选中
+
+    // 6. 设置初始状态和事件 (恢复)
+    lv_btnmatrix_set_one_checked(btnm, true);
     uint32_t initial_selected_id = (uint32_t)active_screen_id;
-    const uint32_t button_count = sizeof(bottom_nav_btn_map)/sizeof(bottom_nav_btn_map[0]) -1; // 减去末尾的空字符串
+    const uint32_t button_count = sizeof(bottom_nav_btn_map)/sizeof(bottom_nav_btn_map[0]) -1;
 
     if (initial_selected_id < button_count) {
-         lv_btnmatrix_set_btn_ctrl(btnm, initial_selected_id, LV_BTNMATRIX_CTRL_CHECKED);
+        lv_btnmatrix_set_btn_ctrl(btnm, initial_selected_id, LV_BTNMATRIX_CTRL_CHECKED);
     } else {
         Serial.printf("Warning: Invalid initial_selected_id (%u) for bottom_nav btnmatrix. Defaulting to 0.\n", initial_selected_id);
         if (button_count > 0) lv_btnmatrix_set_btn_ctrl(btnm, 0, LV_BTNMATRIX_CTRL_CHECKED);

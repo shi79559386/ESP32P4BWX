@@ -100,6 +100,32 @@ void AppGlobal_UpdateSensorData() {
         sensor2Data.isValid = false;
         // Serial.println("Sensor 2 not available"); // 注释掉避免过多输出
     }
+    UBaseType_t taskCount = uxTaskGetNumberOfTasks();
+        TaskStatus_t* tasks = (TaskStatus_t*)pvPortMalloc(taskCount * sizeof(TaskStatus_t));
+        if (tasks) {
+            // 2) 获取所有任务的运行时统计（总滴答数写入 totalRunTime）
+            uint32_t totalRunTime;
+            uxTaskGetSystemState(tasks, taskCount, &totalRunTime);
+            // 3) 找到「IDLE」任务的运行滴答
+            uint32_t idleRunTime = 0;
+            for (UBaseType_t i = 0; i < taskCount; i++) {
+                if (strcmp(tasks[i].pcTaskName, "IDLE") == 0) {
+                    idleRunTime = tasks[i].ulRunTimeCounter;
+                    break;
+                }
+            }
+            vPortFree(tasks);
+            // 4) 计算繁忙百分比
+            uint32_t busyPct = 0;
+       if (totalRunTime > 0) {
+            busyPct = (totalRunTime - idleRunTime) * 100 / totalRunTime;
+            }
+            // 5) 拼入全局状态字符串
+            snprintf(g_work_status_str, sizeof(g_work_status_str),
+                     "工作状态:保温中...  CPU:%u%%", (unsigned)busyPct);
+        }
+        
+
 }
 
 // ============== 初始化函数 ==============

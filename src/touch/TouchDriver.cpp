@@ -94,7 +94,7 @@ bool touch_released(void) {
     return true;
 }
 
-// ✅ LVGL回调
+
 void lvgl_touch_read_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     if (touch_touched()) {
         data->state = LV_INDEV_STATE_PR;

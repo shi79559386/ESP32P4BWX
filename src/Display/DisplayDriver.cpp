@@ -63,8 +63,9 @@ void display_init(void) {
 
     // --- 触摸驱动的初始化与注册 ---
     // 1. 调用厂家提供的初始化函数
-    touch_init(screenWidth, screenHeight, 0); 
-    
+    //touch_init(screenHeight, screenWidth, 1);
+    touch_init(screenWidth, screenHeight, 1);
+
     // 2. 初始化LVGL的输入设备驱动
     lv_indev_drv_init(&indev_drv);
     indev_drv.type    = LV_INDEV_TYPE_POINTER;
@@ -72,12 +73,7 @@ void display_init(void) {
     // 3. 将回调函数指向厂家驱动中提供的那个
     //    这里不再有任何实现，只是一个函数指针的赋值
     indev_drv.read_cb = lvgl_touch_read_cb; 
-    
-    // 4. 注册输入设备
+
     lv_indev_drv_register(&indev_drv);
-
-    // 启动LVGL tick定时器
- //   lvgl_ticker.attach_ms(5, lvgl_tick_interrupt_cb);
-
     Serial.println("DisplayDriver: All initialization done.");
 }
