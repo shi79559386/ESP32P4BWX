@@ -93,18 +93,21 @@ bool FrameAnimation_PlayBootSequence(LGFX& tft) {
     if (!s_initialized || !AppController_IsMainSDReady()) return false;
     FrameAnimation_Start(false);
 
-    const int w = ANIM_FRAME_WIDTH, h = ANIM_FRAME_HEIGHT, chunk_h = ANIM_FRAME_BUFFER_LINES;
+    const int w = ANIM_FRAME_WIDTH;
+    const int h = ANIM_FRAME_HEIGHT;
+    const int chunk_h = ANIM_FRAME_BUFFER_LINES;
     char path[128];
     uint32_t start_ts = millis();
     int frame_cnt = 0;
 
     while (FrameAnimation_GetAndAdvanceToNextFramePath(path, sizeof(path))) {
-        Serial.printf("🔄 Frame %d → %s\n", ++frame_cnt, path);
-        // ↓↓↓ 这里改成直接 open(path) ↓↓↓
-        Serial.printf("    opening: %s\n", path);
-        File f = SD_MMC.open(path);
+        // 构造绝对路径，确保从 /sdcard 开始
+        String absPath = String(BOOT_SD_MOUNT_POINT) + "/" + path;
+        Serial.printf("🔄 Frame %d → %s\n", ++frame_cnt, absPath.c_str());
+
+        File f = SD_MMC.open(absPath.c_str());
         if (!f) {
-            Serial.printf("❌ open failed: %s\n", path);
+            Serial.printf("❌ open failed: %s\n", absPath.c_str());
             break;
         }
 
@@ -116,7 +119,7 @@ bool FrameAnimation_PlayBootSequence(LGFX& tft) {
             size_t bytes = size_t(w) * lines * sizeof(uint16_t);
             size_t rd = f.read((uint8_t*)frame_chunk_buffer, bytes);
             Serial.printf("      🔽 read y=%d lines=%d bytes=%u\n", y, lines, (unsigned)rd);
-            for (size_t i = 0; i < size_t(w) * lines; i++) {
+            for (int i = 0; i < w * lines; i++) {
                 frame_chunk_buffer[i] = __builtin_bswap16(frame_chunk_buffer[i]);
             }
             tft.writePixels(frame_chunk_buffer, w * lines);
@@ -126,7 +129,6 @@ bool FrameAnimation_PlayBootSequence(LGFX& tft) {
         tft.endWrite();
         f.close();
 
-        // 严格帧率
         float target = start_ts + frame_cnt * (TARGET_TOTAL_DURATION_MS / float(ANIM_TOTAL_FRAMES));
         int32_t dt = int32_t(target) - int32_t(millis());
         if (dt > 0) vTaskDelay(pdMS_TO_TICKS(dt));
@@ -135,4 +137,3 @@ bool FrameAnimation_PlayBootSequence(LGFX& tft) {
     Serial.println("▶️ FrameAnimation_PlayBootSequence end");
     return true;
 }
-

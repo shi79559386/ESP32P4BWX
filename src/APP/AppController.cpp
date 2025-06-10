@@ -27,7 +27,9 @@
 #include "esp_task_wdt.h"
 #include <SD_MMC.h>    // ← 用 SDMMC 驱动，全局取代 <SD.h>/<FS.h>
 #include "LGFX_Config.h"
-
+#include "driver/sdmmc_host.h"
+#include "sdmmc_cmd.h"
+#include "esp_vfs_fat.h"
 
 
 static bool main_sd_is_initialized_and_tested = false;
@@ -57,67 +59,48 @@ static void initSensors_Safe() {
 void AppController_Init() {
     Serial.println("=== AppController Init…");
 
-    // 1. 全局 + LVGL init
+    // 1. 全局 + LVGL 初始化
     AppGlobal_Init();
     display_init();
 
-    // 2. 板载 SDMMC 挂载（用于动画/日志/配置）
-    #if ENABLE_SD_CARD
-    // 挂载到 /sdcard
-    if (SD_MMC.begin(BOOT_SD_MOUNT_POINT, false)) {
-      main_sd_is_initialized_and_tested = true;
-      Serial.printf("✅ SDMMC mounted at %s\n", BOOT_SD_MOUNT_POINT);
+#if ENABLE_SD_CARD
+    // 使用 IDF API 挂载 SDMMC 到 /sdcard
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+
+    sdmmc_slot_config_t slot_cfg = SDMMC_SLOT_CONFIG_DEFAULT();
+    slot_cfg.width = 4;
+    slot_cfg.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+
+    esp_vfs_fat_mount_config_t mount_cfg = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+    sdmmc_card_t* card;
+    esp_err_t err = esp_vfs_fat_sdmmc_mount(
+        BOOT_SD_MOUNT_POINT,
+        &host,
+        &slot_cfg,
+        &mount_cfg,
+        &card
+    );
+    if (err == ESP_OK) {
+        main_sd_is_initialized_and_tested = true;
+        Serial.printf("✅ SDMMC mounted at %s\n", BOOT_SD_MOUNT_POINT);
     } else {
-      main_sd_is_initialized_and_tested = false;
-      Serial.printf("❌ SDMMC mount failed at %s\n", BOOT_SD_MOUNT_POINT);
+        main_sd_is_initialized_and_tested = false;
+        Serial.printf("❌ SDMMC mount failed: %d\n", err);
     }
-      // ← 在这里加入目录遍历，确保卡里 video_frames 存在
-    if (main_sd_is_initialized_and_tested) {
-        Serial.println(">>> SD 根目录列表 <<<");
-        File root = SD_MMC.open(BOOT_SD_MOUNT_POINT);
-        if (root && root.isDirectory()) {
-            File f = root.openNextFile();
-            while (f) {
-                Serial.printf("  %s%s\n", f.name(), f.isDirectory() ? "/" : "");
-                f = root.openNextFile();
-            }
-            root.close();
-        }
-        Serial.println(">>> video_frames 子目录列表 <<<");
-        File vf = SD_MMC.open(String(BOOT_SD_MOUNT_POINT) + "/video_frames");
-        if (vf && vf.isDirectory()) {
-            File ff = vf.openNextFile();
-            while (ff) {
-                Serial.println(String("  ") + ff.name());
-                ff = vf.openNextFile();
-            }
-            vf.close();
-        }
-    }
-  #else
+#else
     main_sd_is_initialized_and_tested = false;
-  #endif
-  
+#endif
 
-
-
-    // 4. 其他模块初始化
+    // 2. 其余模块初始化
     initSensors_Safe();
     init_output_controls();
     SystemSettings_Init();
     LightingSettings_Init();
-
-
-
-    // 只有外接 SD 准备好了才初始化音频系统
-    if (audio_sd_is_initialized_and_tested) {
-        Serial.println("Audio SD ready, initializing audio system...");
-        AudioPlayer_Init();
-        ParrotSettings_Init();
-    } else {
-        Serial.println("Audio SD not ready, skipping audio initialization.");
-    }
-
     FreshAirSettings_Init();
     HatchingSettings_Init();
     HumidifySettings_Init();
@@ -125,38 +108,27 @@ void AppController_Init() {
     ThermalControl_Init();
     AppTasks_Init();
 
-    #if ENABLE_SD_CARD
+#if ENABLE_SD_CARD
     if (main_sd_is_initialized_and_tested) {
-      Serial.println(">>> Before Boot Animation");
-      FrameAnimation_Init();
-      Serial.println(">>> After Init, about to call PlayBootSequence()");
-      if (!FrameAnimation_PlayBootSequence(lcd)) {
-        Serial.println("!!! PlayBootSequence returned false");
-      }
-      Serial.println(">>> After PlayBootSequence()");
-      FrameAnimation_DeInit();
-      Serial.println(">>> After DeInit()");
+        Serial.println(">>> Before Boot Animation");
+        FrameAnimation_Init();
+        FrameAnimation_PlayBootSequence(lcd);
+        FrameAnimation_DeInit();
+        Serial.println(">>> After DeInit()");
     }
-  #endif
-  
+#endif
 
-
-  // 4. 创建并加载 UI
-  ui_styles_init();
-
+    // 3. UI 创建与展示
+    ui_styles_init();
     screen_main    = lv_obj_create(nullptr);
     screen_control = lv_obj_create(nullptr);
     screen_setting = lv_obj_create(nullptr);
-
     create_main_ui(screen_main);
     create_control_page_ui(screen_control);
     create_setting_page_ui(screen_setting);
-
     lv_disp_load_scr(screen_main);
 
-    Serial.println("\n========================================");
-    Serial.println("=== AppController Initialization Finished ===");
-    Serial.println("========================================\n");
+    Serial.println("\n=== AppController Initialization Finished ===\n");
 }
 
 
