@@ -1,9 +1,12 @@
-
 #include "AppController.h"
 #include "AppGlobal.h"
 #include "AppTasks.h"
 #include "../Config/Config.h"
-#include "Display/DisplayDriver.h"
+
+// 包含了我们修正后的视频播放模块
+#include "Peripherals/FrameAnimation.h" 
+
+// 包含了所有需要的其他模块
 #include "Display/UI_Styles.h"
 #include "Display/UI_MainScreen.h"
 #include "Display/UI_ControlPage.h"
@@ -12,7 +15,6 @@
 #include "Peripherals/DS3231_Clock.h"
 #include "Peripherals/PCA9548A.h"
 #include "Peripherals/OutputControls.h"
-#include "Peripherals/FrameAnimation.h"
 #include "Peripherals/AudioPlayer.h"
 #include "SettingsLogic/FreshAirSettings.h"
 #include "SettingsLogic/SystemSettings.h"
@@ -24,36 +26,21 @@
 #include "Control/ThermalControl.h"
 #include <Arduino.h>
 #include <Wire.h>
-#include <FS.h>
 #include <SD_MMC.h> // 使用板载SD卡库
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 
-// 全局变量定义
+// --- 全局或静态变量 ---
+// 这些变量最好在它们被定义的头文件中声明为 extern
+// 这里为了完整性而列出
+extern lv_obj_t *screen_main;
+extern lv_obj_t *screen_control;
+extern lv_obj_t *screen_setting;
 static bool main_sd_is_initialized_and_tested = false;
-Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
-// 将屏幕初始化逻辑集中到这里
-void display_init() {
-    Serial.println("Initializing display...");
-    tft.init(screenWidth, screenHeight); // 初始化
-    tft.setRotation(1);                  // 设置为横屏
-    
-    // 初始化背光
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH); // 点亮背光
-    
-    // 此处可以继续添加 LVGL 的显示驱动初始化代码
-    // lv_disp_draw_buf_init(...)
-    // lv_disp_drv_init(...)
-    // ...
-    Serial.println("✅ Display initialized.");
-}
-
-// 传感器初始化 (此函数内容可保持不变)
+// 传感器初始化函数 (保持不变)
 static void initSensors_Safe() {
 #if ENABLE_SENSOR_MODULE == 1
     Serial.println("=== Initializing Sensors ===");
+    // 您原有的传感器初始化代码...
     Wire1.begin(I2C1_SDA_PIN, I2C1_SCL_PIN, 100000);
     if (!pca9548a_init(&Wire1)) { Serial.println("⚠️ PCA9548A init failed."); return; }
     init_all_aht20_sensors(&Wire1, nullptr);
@@ -63,34 +50,121 @@ static void initSensors_Safe() {
 #endif
 }
 
-void AppController_Init() {
+// ========================================================================= //
+//                             核心修改部分                                  //
+// ========================================================================= //
+
+void AppController_Init(LGFX* lcd) {
     Serial.println("=== AppController Init…");
 
-    // 步骤 1: 核心硬件与显示初始化
+    lcd->init();  
+    lcd->setSwapBytes(true);
+    //lcd->setDMAChannel(0);  // 关闭DMA以避免死锁问题
+    lcd->fillScreen(TFT_BLACK);
+
+    // 步骤 1: 全局变量初始化
     AppGlobal_Init();
-    display_init(); // 假设此函数初始化 tft 对象并点亮背光
 
-    // 步骤 2: 播放开机动画 (从内存)
-    Serial.println(">>> Playing Boot Animation (blocking)...");
-    FrameAnimation_PlayBootSequence(tft);
-    Serial.println(">>> Boot Animation Finished.");
-
-    // 步骤 3: 挂载板载SDMMC卡 (用于日志和配置), 受 Config.h 控制
+    // 步骤 2: 挂载板载SD_MMC卡 (顺序已提前，是播放视频的先决条件)
 #if ENABLE_SD_CARD == 1
     Serial.println("Attempting to mount on-board SDMMC...");
+    
+    // ESP32-P4 SD卡引脚配置 - 根据硬件手册配置
+    SD_MMC.setPins(
+        43,  // clk (IO43 - SD1_CLK)
+        44,  // cmd (IO44 - SD1_CMD) 
+        39,  // d0  (IO39 - SD1_D0)
+        40,  // d1  (IO40 - SD1_D1)
+        41,  // d2  (IO41 - SD1_D2)
+        42   // d3  (IO42 - SD1_D3)
+    );
+    
+    // 使用4-bit模式初始化，不需要挂载点参数
     if (SD_MMC.begin()) {
         main_sd_is_initialized_and_tested = true;
         Serial.println("✅ On-board SDMMC mounted successfully.");
+        
+        // 添加调试信息
+        uint8_t cardType = SD_MMC.cardType();
+        if(cardType == CARD_NONE) {
+            Serial.println("⚠️ No SD Card attached");
+            main_sd_is_initialized_and_tested = false;
+        } else {
+            Serial.print("SD Card Type: ");
+            if(cardType == CARD_MMC) Serial.println("MMC");
+            else if(cardType == CARD_SD) Serial.println("SDSC");
+            else if(cardType == CARD_SDHC) Serial.println("SDHC");
+            else Serial.println("UNKNOWN");
+            
+            uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+            Serial.printf("SD Card Size: %lluMB\n", cardSize);
+            
+            // 测试文件系统
+            File root = SD_MMC.open("/");
+            if(root) {
+                Serial.println("Root directory opened successfully");
+                root.close();
+                
+                // 列出根目录文件
+                Serial.println("Files in root directory:");
+                root = SD_MMC.open("/");
+                File file = root.openNextFile();
+                bool found_boot = false;
+                while(file) {
+                    const char* fileName = file.name();
+                    Serial.printf("  %s - %d bytes\n", fileName, file.size());
+                    
+                    // 修正文件名比较 - file.name()可能包含完整路径
+                    if(strstr(fileName, "boot.mjpeg") != nullptr) {
+                        found_boot = true;
+                    }
+                    file = root.openNextFile();
+                }
+                root.close();
+                
+                if(found_boot) {
+                    Serial.println("✅ boot.mjpeg found in root directory!");
+                } else {
+                    Serial.println("⚠️ boot.mjpeg not found in root directory!");
+                }
+                
+                // 步骤 3: 播放开机视频 (从SD卡)
+                Serial.println(">>> Playing Boot Video from SD Card (blocking)...");
+                bool result = FrameAnimation_Play(lcd, "/boot.mjpeg"); // 使用根路径
+                Serial.printf(">>> Boot Video %s\n", result ? "Finished successfully" : "Failed");
+                
+            } else {
+                Serial.println("❌ Failed to open root directory");
+                main_sd_is_initialized_and_tested = false;
+            }
+        }
+
     } else {
         main_sd_is_initialized_and_tested = false;
         Serial.println("❌ On-board SDMMC mount failed.");
+        
+        // 可能的原因
+        Serial.println("Possible reasons:");
+        Serial.println("1. No SD card inserted");
+        Serial.println("2. SD card not formatted as FAT32");
+        Serial.println("3. Hardware connection issue");
+        
+        // 在屏幕上显示错误信息
+        lcd->fillScreen(TFT_RED);
+        lcd->setCursor(10, 10);
+        lcd->println("Error: SD_MMC mount failed!");
+        lcd->setCursor(10, 30);
+        lcd->println("Check SD card!");
+        delay(3000); // 暂停几秒让用户看到
     }
 #else
-    Serial.println("On-board SDMMC is disabled in Config.h.");
+    Serial.println("On-board SDMMC is disabled in Config.h. Skipping video.");
+    main_sd_is_initialized_and_tested = false;
 #endif
 
-    // 步骤 4: 其余模块初始化
-    AudioPlayer_Init(); // 初始化音频模块,它会自己检查 ENABLE_AUDIO_SD
+    // 步骤 4: 初始化其余所有模块 (您原有的逻辑)
+    Serial.println("Initializing other modules...");
+    AudioPlayer_Init();
     initSensors_Safe();
     init_output_controls();
     SystemSettings_Init();
@@ -102,7 +176,9 @@ void AppController_Init() {
     ThermalControl_Init();
     AppTasks_Init();
 
-    // 步骤 5: UI 创建与展示
+    // 步骤 5: 创建并显示LVGL主UI
+    Serial.println("Creating LVGL UI...");
+    lcd->fillScreen(TFT_BLACK); // 清理屏幕，为UI做准备
     ui_styles_init();
     screen_main    = lv_obj_create(nullptr);
     screen_control = lv_obj_create(nullptr);
@@ -114,6 +190,7 @@ void AppController_Init() {
 
     Serial.println("\n=== AppController Initialization Finished ===\n");
 }
+
 
 bool AppController_IsMainSDReady() { return main_sd_is_initialized_and_tested; }
 

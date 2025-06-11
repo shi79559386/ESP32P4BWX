@@ -3,9 +3,11 @@
 #ifndef APP_CONTROLLER_H
 #define APP_CONTROLLER_H
 
-#include "LGFX_Config.h" // 引入LGFX配置
 #include <SD_MMC.h>
+#include "Config/LGFX_Config.h"
 
+// 这个函数的声明已更新，以接收一个 LGFX 对象指针
+void AppController_Init(LGFX* lcd); 
 
 void AppController_Init(void);
 bool AppController_IsMainSDReady();
@@ -15,6 +17,6 @@ bool AppController_LoadConfig(const char* config_name, char* buffer, size_t buff
 bool AppController_SaveConfig(const char* config_name, const char* config_data);
 bool AppController_CheckSDSpace(uint64_t* total_mb, uint64_t* used_mb, uint64_t* free_mb);
 bool AppController_CleanupOldLogs();
-void AppController_ListSDFiles(const char* dirname = "/");
+void AppController_ListSDFiles(const char* dirname );
 
 #endif // APP_CONTROLLER_H
