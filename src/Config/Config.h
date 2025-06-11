@@ -6,7 +6,7 @@
 #include "../Peripherals/PCA9548A.h"
 
 #define ENABLE_SENSOR_MODULE 0  // 0=跳过传感器，1=启用传感器
-#define ENABLE_SD_CARD    1   // 板载动画
+#define ENABLE_SD_CARD    0   // 板载动画
 #define ENABLE_AUDIO_SD   0   // 外接音频 // 设置为 1 尝试启用SD卡和开机动画, 设置为 0 则完全跳过
 #define USE_SOFTWARE_I2C  1
 
@@ -37,8 +37,10 @@
 #define ANIM_FRAME_WIDTH          480
 #define ANIM_FRAME_HEIGHT         320
 #define ANIM_TOTAL_FRAMES         47
-#define ANIM_FRAME_PATH_FORMAT    "video_frames/frame_%04d.bin"
+// Config.h
 #define BOOT_SD_MOUNT_POINT   "/sdcard"
+#define ANIM_FRAME_PATH_FORMAT   "video_frames/frame_%04d.bin"
+
 #define ANIM_FRAME_BUFFER_LINES   20
 #define TARGET_TOTAL_DURATION_MS  4000
 

@@ -21,7 +21,7 @@ private:
       bus_cfg.pin_mosi   = TFT_MOSI;
       bus_cfg.pin_miso   = TFT_MISO;       // 如果完全不用读可设 -1
       bus_cfg.pin_dc     = TFT_DC;
-      bus_cfg.freq_write = 80 * 1000 * 1000; // 40MHz
+      bus_cfg.freq_write = 40 * 1000 * 1000; // 40MHz
       bus_cfg.freq_read  = 10 * 1000 * 1000; // 10MHz（若用到读回）
       _bus.config(bus_cfg);
       _panel.setBus(&_bus);
