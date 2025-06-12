@@ -7,7 +7,7 @@
 
 #define ENABLE_SENSOR_MODULE 0  // 0=跳过传感器，1=启用传感器
 #define ENABLE_SD_CARD    1   // 板载动画
-#define ENABLE_AUDIO_SD   0   // 外接音频 // 设置为 1 尝试启用SD卡和开机动画, 设置为 0 则完全跳过
+#define SKIP_BOOT_ANIMATION    1      // 🆕 新增：设置为 0 可跳过动画
 #define USE_SOFTWARE_I2C  1
 
 // --- LEDC (PWM) 配置 ---

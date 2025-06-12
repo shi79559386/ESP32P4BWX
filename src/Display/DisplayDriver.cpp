@@ -14,6 +14,7 @@ static lv_indev_drv_t   indev_drv;
 
 // LVGL 刷屏回调
 static void lvgl_disp_flush_cb(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* color_p) {
+    
     uint32_t x1 = area->x1;
     uint32_t y1 = area->y1;
     uint32_t w  = lv_area_get_width(area);      

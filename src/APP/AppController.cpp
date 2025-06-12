@@ -45,88 +45,67 @@
 
     void AppController_Init(LGFX* lcd) {
         Serial.println("=== AppController Init…");
-
+    
+        // 1. 屏幕初始化
         lcd->init();
         lcd->setSwapBytes(true);
         lcd->fillScreen(TFT_BLACK);
-
+    
+        // 全局变量等初始化
         AppGlobal_Init();
-
-    #if ENABLE_SD_CARD == 1
+    
+        #if ENABLE_SD_CARD == 1
         Serial.println("Attempting to mount on-board SDMMC...");
-        SD_MMC.setPins(43, 44, 39, 40, 41, 42);
-
         if (SD_MMC.begin()) {
             main_sd_is_initialized_and_tested = true;
             Serial.println("✅ On-board SDMMC mounted successfully.");
-
+    
             uint8_t cardType = SD_MMC.cardType();
-            if(cardType == CARD_NONE) {
+            if (cardType == CARD_NONE) {
                 Serial.println("⚠️ No SD Card attached");
                 main_sd_is_initialized_and_tested = false;
             } else {
                 Serial.print("SD Card Type: ");
-                if(cardType == CARD_MMC) Serial.println("MMC");
-                else if(cardType == CARD_SD) Serial.println("SDSC");
-                else if(cardType == CARD_SDHC) Serial.println("SDHC");
-                else Serial.println("UNKNOWN");
-
-                uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
-                Serial.printf("SD Card Size: %lluMB\n", cardSize);
-
-                File root = SD_MMC.open("/");
-                if(root) {
-                    Serial.println("Root directory opened successfully");
-                    root.close();
-
-                    Serial.println("Files in root directory:");
-                    root = SD_MMC.open("/");
-                    File file = root.openNextFile();
-                    bool found_boot = false;
-                    while(file) {
-                        const char* fileName = file.name();
-                        Serial.printf("  %s - %d bytes\n", fileName, file.size());
-                        if(strstr(fileName, "boot.mjpeg") != nullptr) {
-                            found_boot = true;
-                        }
-                        file = root.openNextFile();
-                    }
-                    root.close();
-
-                    if(found_boot) {
-                        Serial.println("✅ boot.mjpeg found in root directory!");
-                    } else {
-                        Serial.println("⚠️ boot.mjpeg not found in root directory!");
-                    }
-
-                    // 播放前关闭 LVGL 刷新
-                    lvgl_disp = lv_disp_get_default();
-                    lv_disp_set_default(NULL);
-                    lcd->fillScreen(TFT_BLACK);
-                    bool result = FrameAnimation_Play(lcd, "/boot.mjpeg");
-                    lv_disp_set_default(lvgl_disp);
-
-                    Serial.printf(">>> Boot Video %s\n", result ? "Finished successfully" : "Failed");
-                } else {
-                    Serial.println("❌ Failed to open root directory");
-                    main_sd_is_initialized_and_tested = false;
-                }
+                if (cardType == CARD_MMC)  Serial.println("MMC");
+                else if (cardType == CARD_SD)   Serial.println("SDSC");
+                else if (cardType == CARD_SDHC) Serial.println("SDHC");
+                else                            Serial.println("UNKNOWN");
+                Serial.printf("SD Card Size: %lluMB\n", SD_MMC.cardSize()/(1024*1024));
             }
+    
+            // —— 播放动画（条件） ——
+            #if SKIP_BOOT_ANIMATION == 1
+            // 暂停 LVGL 刷新
+            auto disp = lv_disp_get_default();
+            lv_disp_set_default(NULL);
+    
+            lcd->fillScreen(TFT_BLACK);
+            Serial.println("▶ Playing boot animation…");
+    
+            if (!FrameAnimation_Play(lcd, "/boot.mjpeg")) {
+                Serial.println("⚠️ boot.mjpeg 播放失败或文件不存在");
+            }
+    
+            lv_disp_set_default(disp);  // 恢复 LVGL
+            #else
+            Serial.println("⏩ Boot animation skipped (SKIP_BOOT_ANIMATION=1)");
+            #endif
+    
         } else {
             main_sd_is_initialized_and_tested = false;
             Serial.println("❌ On-board SDMMC mount failed.");
             lcd->fillScreen(TFT_RED);
             lcd->setCursor(10, 10);
             lcd->println("Error: SD_MMC mount failed!");
-            lcd->setCursor(10, 30);
-            lcd->println("Check SD card!");
             delay(3000);
         }
     #else
         Serial.println("On-board SDMMC is disabled in Config.h. Skipping video.");
         main_sd_is_initialized_and_tested = false;
     #endif
-
+    
+    
+        // 2. 其他模块初始化
         Serial.println("Initializing other modules...");
         AudioPlayer_Init();
         initSensors_Safe();
@@ -139,7 +118,8 @@
         ThermalSettings_Init();
         ThermalControl_Init();
         AppTasks_Init();
-
+    
+        // 3. 构建 LVGL UI
         Serial.println("Creating LVGL UI...");
         lcd->fillScreen(TFT_BLACK);
         ui_styles_init();
@@ -150,9 +130,12 @@
         create_control_page_ui(screen_control);
         create_setting_page_ui(screen_setting);
         lv_disp_load_scr(screen_main);
-
+    
         Serial.println("\n=== AppController Initialization Finished ===\n");
+        
+        lv_timer_handler();  // 💡 立即刷新画面
     }
+    
 
     bool AppController_IsMainSDReady() { return main_sd_is_initialized_and_tested; }
 
