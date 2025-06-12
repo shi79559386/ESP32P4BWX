@@ -23,6 +23,7 @@ private:
       bus_cfg.pin_dc     = TFT_DC;
       bus_cfg.freq_write = 40 * 1000 * 1000; // 40MHz
       bus_cfg.freq_read  = 10 * 1000 * 1000; // 10MHz（若用到读回）
+      bus_cfg.dma_channel = 1;   // ✅ 加在这里！打开 SPI DMA 加速
       _bus.config(bus_cfg);
       _panel.setBus(&_bus);
     }

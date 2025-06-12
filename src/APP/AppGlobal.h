@@ -73,6 +73,7 @@ extern lv_obj_t *screen_setting;
 // 卡片标题和图标数组
 extern const char* card_titles[CARD_ID_COUNT];
 extern const char* card_icons[CARD_ID_COUNT];
+extern lv_disp_t* lvgl_disp;  // 声明变量
 
 // ============== 函数声明 ==============
 void AppGlobal_Init(); // 全局变量初始化函数
