@@ -82,14 +82,31 @@
             lcd->fillScreen(TFT_BLACK);
             Serial.println("▶ Playing boot animation…");
     
-            if (!FrameAnimation_Play(lcd, "/boot.mjpeg")) {
-                Serial.println("⚠️ boot.mjpeg 播放失败或文件不存在");
+        File vFile = SD_MMC.open("/boot.mjpeg", FILE_READ);
+        if (vFile && !vFile.isDirectory()) {
+            // 分配 PSRAM 缓冲
+            uint8_t* buf = (uint8_t*)heap_caps_malloc(MJPEG_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+            if (buf) {
+                MjpegClass player;
+                // multiTask=false 保证在主任务中解码
+                player.setup(vFile, buf, lcd, /*multiTask=*/false);
+                // 严格照例：同步循环读帧+解码+绘制
+                while (player.readMjpegBuf()) {
+                    player.drawJpg();
+                    delay(40); // 每帧延时，可根据需要调整
+                }
+                heap_caps_free(buf);
+            } else {
+                Serial.println("Error: buf malloc failed");
             }
-    
-            lv_disp_set_default(disp);  // 恢复 LVGL
-            #else
-            Serial.println("⏩ Boot animation skipped (SKIP_BOOT_ANIMATION=1)");
-            #endif
+            vFile.close();
+            Serial.println("▶ Boot animation finished");
+        } else {
+            Serial.println("Error: open /boot.mjpeg failed");
+        }
+
+        // 恢复 LVGL 刷新
+        lv_disp_set_default(disp);
     
         } else {
             main_sd_is_initialized_and_tested = false;
